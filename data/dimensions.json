@@ -1,0 +1,62 @@
+[
+ {
+  "dim": 1,
+  "prime": 2,
+  "ratio": [
+   1,
+   1
+  ],
+  "cents": 0.0,
+  "color": "#ffffff",
+  "diffColor": "#4dabf7",
+  "name": "1D"
+ },
+ {
+  "dim": 2,
+  "prime": 3,
+  "ratio": [
+   3,
+   2
+  ],
+  "cents": 701.955,
+  "color": "#ff5c5c",
+  "diffColor": "#ff5c5c",
+  "name": "2D"
+ },
+ {
+  "dim": 3,
+  "prime": 5,
+  "ratio": [
+   5,
+   4
+  ],
+  "cents": 386.314,
+  "color": "#2ecc71",
+  "diffColor": "#2ecc71",
+  "name": "3D"
+ },
+ {
+  "dim": 4,
+  "prime": 7,
+  "ratio": [
+   7,
+   4
+  ],
+  "cents": 968.826,
+  "color": "#b07ce8",
+  "diffColor": "#b07ce8",
+  "name": "4D"
+ },
+ {
+  "dim": 5,
+  "prime": 11,
+  "ratio": [
+   11,
+   8
+  ],
+  "cents": 551.318,
+  "color": "#f5d34b",
+  "diffColor": "#f5d34b",
+  "name": "5D"
+ }
+]

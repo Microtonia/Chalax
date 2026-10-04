@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>键盘捕捉测试 · Chalax</title>
+  <style>
+    :root {
+      --bg: #16141c;
+      --panel: #241f2e;
+      --text: #f2eff7;
+      --dim: #b8b0c4;
+      --accent: #b07ce8;
+      --key-bg: rgba(255, 255, 255, 0.06);
+      --key-border: rgba(255, 255, 255, 0.15);
+      --active: #ff5c5c;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      overflow: auto;
+    }
+    h1 { font-size: 18px; letter-spacing: 2px; margin: 0 0 4px; }
+    .sub { color: var(--dim); font-size: 12px; margin: 0 0 16px; text-align: center; max-width: 720px; line-height: 1.6; }
+
+    .stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 10px 18px;
+      text-align: center;
+      min-width: 120px;
+    }
+    .stat .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+    .stat .label { font-size: 11px; color: var(--dim); letter-spacing: 1px; }
+
+    .held {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 10px 14px;
+      min-height: 40px;
+      max-width: 760px;
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .held .tag {
+      background: rgba(176, 124, 232, 0.2);
+      border: 1px solid var(--accent);
+      color: #fff;
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 13px;
+      font-family: Consolas, monospace;
+    }
+    .held .empty { color: var(--dim); font-size: 13px; }
+
+    .keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .krow { display: flex; gap: 6px; justify-content: center; }
+    .key {
+      min-width: 42px;
+      height: 42px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--key-bg);
+      border: 1px solid var(--key-border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: Consolas, monospace;
+      user-select: none;
+      transition: background .08s, border-color .08s, transform .08s;
+    }
+    .key.w2 { min-width: 84px; }
+    .key.w3 { min-width: 130px; }
+    .key.w4 { min-width: 180px; }
+    .key.active {
+      background: var(--active);
+      border-color: var(--active);
+      color: #fff;
+      box-shadow: 0 0 12px var(--active);
+      transform: translateY(1px);
+    }
+
+    .tools { margin-top: 16px; display: flex; gap: 10px; }
+    button {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.16); }
+  </style>
+</head>
+<body>
+  <h1>键盘捕捉测试</h1>
+  <p class="sub">
+    按住多个键观察下方键盘图和「当前按住」列表：如果某个键按下后没有点亮 / 没有出现在列表里，
+    说明这几个键在你的键盘上发生了<strong>键位冲突（ghosting）</strong>，这是硬件矩阵限制，软件无法绕过。
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="count">0</div><div class="label">当前按住</div></div>
+    <div class="stat"><div class="num" id="peak">0</div><div class="label">历史峰值</div></div>
+  </div>
+
+  <div class="held" id="held"><span class="empty">尚未按键…</span></div>
+
+  <div class="keyboard" id="keyboard"></div>
+
+  <div class="tools">
+    <button id="clear">清除峰值记录</button>
+  </div>
+
+  <script>
+    // 物理键位布局（使用 e.code，稳定不受输入法/大小写影响）
+    const ROWS = [
+      [
+        { c: 'Backquote', l: '`' }, { c: 'Digit1', l: '1' }, { c: 'Digit2', l: '2' },
+        { c: 'Digit3', l: '3' }, { c: 'Digit4', l: '4' }, { c: 'Digit5', l: '5' },
+        { c: 'Digit6', l: '6' }, { c: 'Digit7', l: '7' }, { c: 'Digit8', l: '8' },
+        { c: 'Digit9', l: '9' }, { c: 'Digit0', l: '0' }, { c: 'Minus', l: '-' },
+        { c: 'Equal', l: '=' }, { c: 'Backspace', l: '⌫', w: 2 }
+      ],
+      [
+        { c: 'Tab', l: 'Tab', w: 2 }, { c: 'KeyQ', l: 'Q' }, { c: 'KeyW', l: 'W' },
+        { c: 'KeyE', l: 'E' }, { c: 'KeyR', l: 'R' }, { c: 'KeyT', l: 'T' },
+        { c: 'KeyY', l: 'Y' }, { c: 'KeyU', l: 'U' }, { c: 'KeyI', l: 'I' },
+        { c: 'KeyO', l: 'O' }, { c: 'KeyP', l: 'P' }, { c: 'BracketLeft', l: '[' },
+        { c: 'BracketRight', l: ']' }, { c: 'Backslash', l: '\\', w: 2 }
+      ],
+      [
+        { c: 'CapsLock', l: 'Caps', w: 2 }, { c: 'KeyA', l: 'A' }, { c: 'KeyS', l: 'S' },
+        { c: 'KeyD', l: 'D' }, { c: 'KeyF', l: 'F' }, { c: 'KeyG', l: 'G' },
+        { c: 'KeyH', l: 'H' }, { c: 'KeyJ', l: 'J' }, { c: 'KeyK', l: 'K' },
+        { c: 'KeyL', l: 'L' }, { c: 'Semicolon', l: ';' }, { c: 'Quote', l: "'" },
+        { c: 'Enter', l: 'Enter', w: 2 }
+      ],
+      [
+        { c: 'ShiftLeft', l: 'Shift', w: 3 }, { c: 'KeyZ', l: 'Z' }, { c: 'KeyX', l: 'X' },
+        { c: 'KeyC', l: 'C' }, { c: 'KeyV', l: 'V' }, { c: 'KeyB', l: 'B' },
+        { c: 'KeyN', l: 'N' }, { c: 'KeyM', l: 'M' }, { c: 'Comma', l: ',' },
+        { c: 'Period', l: '.' }, { c: 'Slash', l: '/' }, { c: 'ShiftRight', l: 'Shift', w: 3 }
+      ],
+      [
+        { c: 'ControlLeft', l: 'Ctrl', w: 2 }, { c: 'MetaLeft', l: 'Win', w: 2 },
+        { c: 'AltLeft', l: 'Alt', w: 2 }, { c: 'Space', l: 'Space', w: 4 },
+        { c: 'AltRight', l: 'Alt', w: 2 }, { c: 'MetaRight', l: 'Win', w: 2 },
+        { c: 'ControlRight', l: 'Ctrl', w: 2 }
+      ]
+    ];
+
+    const kb = document.getElementById('keyboard');
+    const keyEls = {}; // code -> element
+
+    ROWS.forEach(row => {
+      const r = document.createElement('div');
+      r.className = 'krow';
+      row.forEach(k => {
+        const d = document.createElement('div');
+        d.className = 'key' + (k.w ? ' w' + k.w : '');
+        d.dataset.code = k.c;
+        d.textContent = k.l;
+        r.appendChild(d);
+        keyEls[k.c] = d;
+      });
+      kb.appendChild(r);
+    });
+
+    const held = new Set();
+    let peak = 0;
+
+    const countEl = document.getElementById('count');
+    const peakEl = document.getElementById('peak');
+    const heldEl = document.getElementById('held');
+
+    function render() {
+      countEl.textContent = held.size;
+      peakEl.textContent = peak;
+
+      // 高亮所有键
+      for (const c in keyEls) keyEls[c].classList.remove('active');
+      held.forEach(c => { if (keyEls[c]) keyEls[c].classList.add('active'); });
+
+      // 当前按住列表
+      if (held.size === 0) {
+        heldEl.innerHTML = '<span class="empty">尚未按键…</span>';
+      } else {
+        const tags = [...held].map(c => `<span class="tag">${c}</span>`);
+        heldEl.innerHTML = tags.join('');
+      }
+    }
+
+    window.addEventListener('keydown', e => {
+      // 忽略输入框等；这里没有输入框，直接处理。跳过重复事件。
+      if (e.repeat) return;
+      held.add(e.code);
+      peak = Math.max(peak, held.size);
+      render();
+      // 阻止一些默认行为（如滚动、搜索框），便于专注测试
+      if (['Space', 'Tab', 'Backquote', 'Quote', 'Slash', 'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Semicolon', 'Comma', 'Period', 'Backslash'].includes(e.code)) {
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', e => {
+      held.delete(e.code);
+      render();
+    });
+
+    window.addEventListener('blur', () => {
+      held.clear();
+      render();
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      peak = 0;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
