@@ -10,6 +10,8 @@
   "settings.image": "画像",
   "settings.imageNone": "— なし —",
   "settings.imageUrl": "画像 URL",
+  "settings.uploadImage": "画像をアップロード",
+  "settings.uploadFailed": "アップロードに失敗",
   "settings.clearImage": "画像を消去",
   "settings.dimensions": "次元",
   "settings.dimensionsNote": "1D–5D は倍音 2、3、5、7、11 に対応（白 / 赤 / 緑 / 紫 / 黄）",

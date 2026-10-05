@@ -75,6 +75,11 @@
           <select id="picSelect"><option value="" data-i18n="settings.imageNone">— 无 —</option></select>
         </label>
         <label class="row">
+          <span data-i18n="settings.uploadImage">上传图片</span>
+          <button class="btn" id="picUploadBtn" style="flex:1" data-i18n="settings.uploadImage">上传图片</button>
+          <input type="file" id="picUpload" accept="image/*" style="display:none">
+        </label>
+        <label class="row">
           <span data-i18n="settings.imageUrl">图片网址</span>
           <input type="url" id="picUrl" placeholder="https://…">
         </label>

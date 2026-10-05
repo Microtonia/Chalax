@@ -10,6 +10,8 @@
   "settings.image": "图片",
   "settings.imageNone": "— 无 —",
   "settings.imageUrl": "图片网址",
+  "settings.uploadImage": "上传图片",
+  "settings.uploadFailed": "上传失败",
   "settings.clearImage": "清除图片",
   "settings.dimensions": "维度",
   "settings.dimensionsNote": "1D–5D 对应泛音 2、3、5、7、11（白 / 红 / 绿 / 紫 / 黄）",

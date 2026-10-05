@@ -14,6 +14,7 @@
 import json
 import math
 import sys
+import urllib.parse
 from fractions import Fraction
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -156,6 +157,14 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
+    def _send_json(self, status, obj):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/pics":
@@ -164,14 +173,30 @@ class Handler(SimpleHTTPRequestHandler):
                 for f in sorted(PIC_DIR.iterdir()):
                     if f.is_file() and f.suffix.lower() in IMAGE_EXTS:
                         files.append(f.name)
-            body = json.dumps(files, ensure_ascii=False).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_json(200, files)
             return
         super().do_GET()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/pics/upload":
+            qs = urllib.parse.parse_qs(parsed.query)
+            name = (qs.get("name") or [""])[0]
+            # 只取文件名（去掉任何路径部分），防止目录穿越
+            name = Path(name).name
+            if not name or Path(name).suffix.lower() not in IMAGE_EXTS:
+                self._send_json(400, {"error": "invalid filename"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            data = self.rfile.read(length)
+            if not data:
+                self._send_json(400, {"error": "empty file"})
+                return
+            PIC_DIR.mkdir(parents=True, exist_ok=True)
+            (PIC_DIR / name).write_bytes(data)
+            self._send_json(200, {"name": name})
+            return
+        super().do_POST()
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[Chalax] %s - %s\n" % (self.address_string(), fmt % args))

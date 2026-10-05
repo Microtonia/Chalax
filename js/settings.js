@@ -71,6 +71,11 @@ class Settings {
       document.getElementById('picUrl').value = '';
       this.applyBackground();
     });
+    // 上传本地图片到 data/pic/
+    document.getElementById('picUploadBtn').addEventListener('click', () => {
+      document.getElementById('picUpload').click();
+    });
+    document.getElementById('picUpload').addEventListener('change', e => this.onUploadPic(e));
 
     // 根音频率
     document.getElementById('fundamental').addEventListener('input', e => {
@@ -299,10 +304,11 @@ class Settings {
   }
 
   async loadPics() {
+    const sel = document.getElementById('picSelect');
+    sel.innerHTML = `<option value="" data-i18n="settings.imageNone">${I18n.t('settings.imageNone')}</option>`;
     try {
       const res = await fetch('api/pics');
       const files = await res.json();
-      const sel = document.getElementById('picSelect');
       files.forEach(f => {
         const opt = document.createElement('option');
         opt.value = f;
@@ -311,6 +317,28 @@ class Settings {
       });
     } catch (e) {
       console.warn('加载图片列表失败', e);
+    }
+  }
+
+  async onUploadPic(e) {
+    const file = e.target.files[0];
+    e.target.value = '';   // 清空，允许再次选择同一文件
+    if (!file) return;
+    try {
+      const res = await fetch('api/pics/upload?name=' + encodeURIComponent(file.name), {
+        method: 'POST',
+        body: file,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      await this.loadPics();
+      document.getElementById('picSelect').value = data.name;
+      this.state.bgImage = 'data/pic/' + encodeURIComponent(data.name);
+      document.getElementById('picUrl').value = '';
+      this.applyBackground();
+    } catch (err) {
+      alert(I18n.t('settings.uploadFailed'));
+      console.warn('上传图片失败', err);
     }
   }
 

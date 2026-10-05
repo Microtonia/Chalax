@@ -10,6 +10,8 @@
   "settings.image": "Image",
   "settings.imageNone": "— None —",
   "settings.imageUrl": "Image URL",
+  "settings.uploadImage": "Upload image",
+  "settings.uploadFailed": "Upload failed",
   "settings.clearImage": "Clear image",
   "settings.dimensions": "Dimensions",
   "settings.dimensionsNote": "1D–5D correspond to overtones 2, 3, 5, 7, 11 (white / red / green / purple / yellow)",
