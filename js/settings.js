@@ -1,4 +1,8 @@
 // Chalax —— 设置栏逻辑
+
+// 表示「单音」这一特殊快捷键目标（区别于形状的 id）
+const SHORTCUT_SINGLE = '__single__';
+
 class Settings {
   constructor(state, grid, audio) {
     this.state = state;
@@ -7,6 +11,7 @@ class Settings {
     this.dims = null;
     this.panel = document.getElementById('settingsPanel');
     this.shapesKey = 'chalax_shapes';
+    this.singleShortcutKey = 'chalax_single_shortcut';
     this.langKey = 'chalax_lang';
     this._recording = null;
     this._waitingShortcutFor = null;
@@ -193,6 +198,7 @@ class Settings {
     });
 
     this.loadShapes();
+    this.loadSingleShortcut();
     this.loadPics();
     this._updateShapeHint();
     this._updateShortcutDisplay();
@@ -365,9 +371,25 @@ class Settings {
     try { localStorage.setItem(this.shapesKey, JSON.stringify(this.state.shapes)); } catch (e) { /* 忽略 */ }
   }
 
+  loadSingleShortcut() {
+    try {
+      this.state.singleShortcut = localStorage.getItem(this.singleShortcutKey) || null;
+    } catch (e) {
+      this.state.singleShortcut = null;
+    }
+  }
+
+  saveSingleShortcut() {
+    try {
+      if (this.state.singleShortcut) localStorage.setItem(this.singleShortcutKey, this.state.singleShortcut);
+      else localStorage.removeItem(this.singleShortcutKey);
+    } catch (e) { /* 忽略 */ }
+  }
+
   renderShapes() {
     const sel = document.getElementById('shapeSelect');
-    sel.innerHTML = `<option value="">${I18n.t('settings.shapeNone')}</option>`;
+    const singleSc = this.state.singleShortcut ? `[${this.shortcutSymbol(this.state.singleShortcut)}] ` : '';
+    sel.innerHTML = `<option value="">${singleSc}${I18n.t('settings.shapeNone')}</option>`;
     this.state.shapes.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.id;
@@ -449,17 +471,19 @@ class Settings {
   }
 
   startShortcutWaiting() {
-    if (!this.state.activeShapeId) return;
-    this._waitingShortcutFor = this.state.activeShapeId;
+    this._waitingShortcutFor = this.state.activeShapeId || SHORTCUT_SINGLE;
     this._updateShortcutDisplay();
   }
 
   clearShortcut() {
-    const id = this.state.activeShapeId;
-    if (!id) return;
-    const shape = this.state.shapes.find(s => s.id === id);
-    if (shape) shape.shortcut = null;
-    this.saveShapes();
+    if (this.state.activeShapeId) {
+      const shape = this.state.shapes.find(s => s.id === this.state.activeShapeId);
+      if (shape) shape.shortcut = null;
+      this.saveShapes();
+    } else {
+      this.state.singleShortcut = null;
+      this.saveSingleShortcut();
+    }
     this.renderShapes();
     this._updateShortcutDisplay();
   }
@@ -479,12 +503,19 @@ class Settings {
     }
   }
 
-  _assignShortcut(shapeId, code) {
-    // 先解除其他形状对该快捷键的占用，保证一键一形状
+  _assignShortcut(target, code) {
+    // 解除其他形状与单音对该快捷键的占用，保证一键一目标
     this.state.shapes.forEach(s => { if (s.shortcut === code) s.shortcut = null; });
-    const shape = this.state.shapes.find(s => s.id === shapeId);
-    if (shape) shape.shortcut = code;
-    this.saveShapes();
+    if (this.state.singleShortcut === code) this.state.singleShortcut = null;
+
+    if (target === SHORTCUT_SINGLE) {
+      this.state.singleShortcut = code;
+      this.saveSingleShortcut();
+    } else {
+      const shape = this.state.shapes.find(s => s.id === target);
+      if (shape) shape.shortcut = code;
+      this.saveShapes();
+    }
     this._waitingShortcutFor = null;
     this.renderShapes();
     this._updateShortcutDisplay();
@@ -495,8 +526,14 @@ class Settings {
     if (this._waitingShortcutFor) {
       display.textContent = I18n.t('settings.shortcutWaiting');
     } else {
-      const shape = this.state.shapes.find(s => s.id === this.state.activeShapeId);
-      display.textContent = (shape && shape.shortcut) ? this.shortcutSymbol(shape.shortcut) : '—';
+      let code = null;
+      if (this.state.activeShapeId) {
+        const shape = this.state.shapes.find(s => s.id === this.state.activeShapeId);
+        code = shape && shape.shortcut;
+      } else {
+        code = this.state.singleShortcut;
+      }
+      display.textContent = code ? this.shortcutSymbol(code) : '—';
     }
   }
 

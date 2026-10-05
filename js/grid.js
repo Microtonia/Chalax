@@ -329,13 +329,19 @@ class Grid {
     const m = this._keyMap[e.code];
     if (!m) return;
 
-    // Shift+数字行（!@#$%^&*()_+）用于切换形状，不用于发音
+    // Shift+数字行（!@#$%^&*()_+）用于切换形状/单音，不用于发音
     if (e.shiftKey && SHORTCUT_KEYS.includes(e.code)) {
-      const shape = this.state.shapes.find(s => s.shortcut === e.code);
-      if (shape) {
+      if (this.state.singleShortcut === e.code) {
         e.preventDefault();
-        this.state.activeShapeId = shape.id;
-        if (this.onShapeSelect) this.onShapeSelect(shape.id);
+        this.state.activeShapeId = null;
+        if (this.onShapeSelect) this.onShapeSelect(null);
+      } else {
+        const shape = this.state.shapes.find(s => s.shortcut === e.code);
+        if (shape) {
+          e.preventDefault();
+          this.state.activeShapeId = shape.id;
+          if (this.onShapeSelect) this.onShapeSelect(shape.id);
+        }
       }
       return;
     }

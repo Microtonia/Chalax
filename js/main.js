@@ -9,8 +9,9 @@
     showDims: {1: true, 2: true, 3: true, 4: true, 5: true},  // 显示哪些维度的音差
     flashMode: 'diff', // 方块亮色依据：diff(音差) / dimension(维度方向) / wavelength(频率波长)
     saturation: 100,   // 亮色饱和度（0–100，100=原色）
-    shapes: [],        // 自定义形状 [{ id, name, offsets:[{dx,dy}] }]（localStorage 加载）
+    shapes: [],        // 自定义形状 [{ id, name, offsets:[{dx,dy}], shortcut }]（localStorage 加载）
     activeShapeId: null, // 当前选中的形状 id（null = 单音）
+    singleShortcut: null, // 单音模式的快捷键（Shift+数字行，存 localStorage）
     fundamental: 440,  //根音频率 ——A
     bgColor: '#5c5470',
     bgOpacity: 1.0,
