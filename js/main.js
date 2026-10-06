@@ -7,6 +7,10 @@
     showDiff: false,   // 是否显示音差
     threshold: 50,     // 音差显示阈值（0–100 音分）
     showDims: {1: true, 2: true, 3: true, 4: true, 5: true},  // 显示哪些维度的音差
+    tuning: 'just',    // 调音方式：'just' 纯率（默认）/ 'equal' 平均律
+    edoType: 'edo',    // 等分方式（当前仅实现 edo）
+    edoN: 12,          // 平均律等分数（仅平均律下生效）
+    showEdoSteps: false, // 是否显示平均律步数（仅平均律下可用）
     flashMode: 'diff', // 方块亮色依据：diff(音差) / dimension(维度方向) / wavelength(频率波长)
     saturation: 100,   // 亮色饱和度（0–100，100=原色）
     shapes: [],        // 自定义形状 [{ id, name, offsets:[{dx,dy}], shortcut }]（localStorage 加载）

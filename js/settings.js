@@ -106,6 +106,62 @@ class Settings {
       this.grid.render();
     });
 
+    // 调音方式互斥：纯率（默认）/ 平均律；等分数与步数仅在平均律下可用
+    const tuningJust = document.getElementById('tuningJust');
+    const tuningEqual = document.getElementById('tuningEqual');
+    const tuningType = document.getElementById('tuningType');
+    const tuningDivision = document.getElementById('tuningDivision');
+    const showEdoSteps = document.getElementById('showEdoSteps');
+    const applyTuningUI = () => {
+      const isEqual = tuningEqual.checked;
+      tuningDivision.disabled = !isEqual;
+      showEdoSteps.disabled = !isEqual;
+      // 平均律默认勾选步数；切回纯率则自动取消
+      showEdoSteps.checked = isEqual;
+      this.state.showEdoSteps = isEqual;
+    };
+    tuningJust.addEventListener('change', e => {
+      if (e.target.checked) {
+        tuningEqual.checked = false;
+        this.state.tuning = 'just';
+      } else {
+        e.target.checked = true;   // 至少保留一种
+      }
+      applyTuningUI();
+      this.grid.render();
+    });
+    tuningEqual.addEventListener('change', e => {
+      if (e.target.checked) {
+        tuningJust.checked = false;
+        this.state.tuning = 'equal';
+      } else {
+        e.target.checked = true;
+      }
+      applyTuningUI();
+      this.grid.render();
+    });
+
+    // 等分方式（当前仅 edo 生效）
+    tuningType.addEventListener('change', e => {
+      this.state.edoType = e.target.value;
+      this.grid.render();
+    });
+
+    // 等分数
+    tuningDivision.addEventListener('input', e => {
+      let v = parseInt(e.target.value, 10);
+      if (isNaN(v)) return;
+      v = Math.max(1, Math.min(1200, v));
+      this.state.edoN = v;
+      this.grid.render();
+    });
+
+    // 显示平均律步数
+    showEdoSteps.addEventListener('change', e => {
+      this.state.showEdoSteps = e.target.checked;
+      this.grid.render();
+    });
+
     // 方块亮度依据（三种模式互斥）
     const flashModes = [
       { id: 'flashDiff', mode: 'diff' },

@@ -93,6 +93,13 @@ function wavelengthToRGB(wl) {
   ];
 }
 
+// 音分八度等价约减到 [-600, 600)
+function wrapCents(c) {
+  while (c < -600) c += 1200;
+  while (c >= 600) c -= 1200;
+  return c;
+}
+
 class Grid {
   constructor(container, audio, state) {
     this.container = container;
@@ -105,7 +112,6 @@ class Grid {
     this._dragging = false;        // 是否处于拖拽状态
     this._lastCell = null;         // 拖拽过程中最近一次发音的格子元素
     this._cellMap = {};            // "x,y" -> 格子元素（键盘发音定位用）
-    this._held = {};               // 按住的键 code -> { freqs, els }（长按发音用）
     this._recording = null;        // 形状录制状态 { root, offsets }，非空即录制中
 
     // 键盘 -> 网格坐标（物理键位）
@@ -123,10 +129,8 @@ class Grid {
     window.addEventListener('pointerup', () => this._onPointerUp());
     window.addEventListener('pointercancel', () => this._onPointerUp());
 
-    // 键盘发音（长按：按下发声、抬起停止）
+    // 键盘发音（按下发声，与点击一致）
     window.addEventListener('keydown', e => this._onKeyDown(e));
-    window.addEventListener('keyup', e => this._onKeyUp(e));
-    window.addEventListener('blur', () => this._onBlur());
   }
 
   setData(notes, dims) {
@@ -174,13 +178,11 @@ class Grid {
         el.dataset.x = x;
         el.dataset.y = y;
 
-        if (this.state.showDiff) {
+        const content = this._cellContent(cell, cellPx);
+        if (content) {
           el.classList.add('diff');
-          const matches = this.matchDims(cell);
-          if (matches.length > 0) {
-            el.style.background = this.dims[matches[0].dim - 1].diffColor;
-            el.innerHTML = this.nearChip(matches, cellPx);
-          }
+          if (content.bg) el.style.background = content.bg;
+          el.innerHTML = content.html;
         }
 
         el._cell = cell;
@@ -201,19 +203,112 @@ class Grid {
       .sort((a, b) => Math.abs(a.cents) - Math.abs(b.cents));
   }
 
-  // 音差模式：为每个匹配维度渲染一行「逗号比 + 音分」
+  // 音差模式：为每个匹配维度渲染一行「逗号比 + 音分」（纯率音比目标音低时音分带负号）
   nearChip(matches, cellPx) {
     const fsR = Math.max(8, Math.floor(cellPx / 4.2));
     const fsC = Math.max(7, Math.floor(cellPx / 6));
     const rows = matches.map(m => {
       const color = this.dims[m.dim - 1].diffColor;
-      const cents = Math.round(Math.abs(m.cents));
+      const cents = Math.round(m.cents);
       return `<div class="near-row" style="border-left:3px solid ${color}">
         <span class="chip-ratio" style="font-size:${fsR}px">${m.n}/${m.d}</span>
         <span class="chip-cents" style="font-size:${fsC}px">${cents}¢</span>
       </div>`;
     });
     return `<div class="near">${rows.join('')}</div>`;
+  }
+
+  // 组装格子的显示内容（纯率音差 / 平均律步数与音差），返回 { html, bg } 或 null
+  _cellContent(cell, cellPx) {
+    const isEqual = this.state.tuning === 'equal';
+
+    if (!isEqual) {
+      // 纯率：沿用原有音差显示（音分带符号）
+      if (!this.state.showDiff) return null;
+      const matches = this.matchDims(cell);
+      if (matches.length === 0) return { html: '', bg: null };
+      return { html: this.nearChip(matches, cellPx), bg: this.dims[matches[0].dim - 1].diffColor };
+    }
+
+    // 平均律
+    const edo = this._computeEdo(cell);
+    const parts = [];
+    let bg = null;
+
+    if (this.state.showEdoSteps) {
+      parts.push(this._stepChip(edo, cellPx));
+    }
+
+    if (this.state.showDiff) {
+      const matches = this.matchDims(cell);   // 有颜色：纯率格匹配泛音维度
+      if (matches.length > 0) {
+        bg = this.dims[matches[0].dim - 1].diffColor;
+        parts.push(this._chainChips(matches, edo, cellPx));
+      } else {
+        // 无颜色：仅显示 EDO 音 vs 纯率格的音差
+        parts.push(this._justCentsChip(edo, cellPx));
+      }
+    }
+
+    if (parts.length === 0) return null;
+    return { html: `<div class="near">${parts.join('')}</div>`, bg };
+  }
+
+  // 计算该纯率格最近的平均律音（edo）及音差
+  _computeEdo(cell) {
+    const N = this.state.edoN;
+    let k = Math.round(N * cell.cents / 1200) % N;   // 步数 0..N-1（八度等价回绕）
+    const edoCents = 1200 * k / N;
+    const vsJustCents = wrapCents(edoCents - cell.cents);
+    const diffs = this.dims.map(dim => ({
+      dim: dim.dim,
+      cents: wrapCents(edoCents - dim.cents),
+    }));
+    return { k, edoCents, vsJustCents, diffs };
+  }
+
+  // 根据当前调音计算该格子的实际发声频率（平均律时用最近的 EDO 音高）
+  _freqFor(cell) {
+    let ratio = cell.n / cell.d;
+    if (this.state.tuning === 'equal') {
+      const N = this.state.edoN;
+      const k = Math.round(N * cell.cents / 1200) % N;
+      ratio = Math.pow(2, k / N);
+    }
+    return this.state.fundamental * ratio;
+  }
+
+  // 步数行：如 12\0
+  _stepChip(edo, cellPx) {
+    const fs = Math.max(9, Math.floor(cellPx / 3.6));
+    return `<div class="near-row step-row">
+      <span class="chip-step" style="font-size:${fs}px">${this.state.edoN}\\${edo.k}</span>
+    </div>`;
+  }
+
+  // 有颜色格子：纯率逗号比（不变）+「纯率音分 → EDO 音到目标音的音差」（同一行）
+  _chainChips(matches, edo, cellPx) {
+    const fsR = Math.max(8, Math.floor(cellPx / 4.2));
+    const fsC = Math.max(7, Math.floor(cellPx / 6));
+    return matches.map(m => {
+      const color = this.dims[m.dim - 1].diffColor;
+      const pureCents = Math.round(m.cents);          // 纯率格到目标音的音差
+      const ed = edo.diffs.find(d => d.dim === m.dim);
+      const edoCents = Math.round(ed ? ed.cents : 0); // EDO 音到目标音的音差
+      return `<div class="near-row" style="border-left:3px solid ${color}">
+        <span class="chip-ratio" style="font-size:${fsR}px">${m.n}/${m.d}</span>
+        <span class="chip-cents" style="font-size:${fsC}px">${pureCents}¢ → ${edoCents}¢</span>
+      </div>`;
+    }).join('');
+  }
+
+  // 无颜色格子：仅 EDO 音 vs 纯率格的音差（音分，带符号）
+  _justCentsChip(edo, cellPx) {
+    const fs = Math.max(7, Math.floor(cellPx / 6));
+    const cents = Math.round(edo.vsJustCents);
+    return `<div class="near-row">
+      <span class="chip-cents" style="font-size:${fs}px">${cents}¢</span>
+    </div>`;
   }
 
   onClick(el, cell) {
@@ -252,7 +347,7 @@ class Grid {
     }
     const el = this._cellMap[`${x},${y}`];
     if (el && el._cell) {
-      const freq = this.state.fundamental * (el._cell.n / el._cell.d);
+      const freq = this._freqFor(el._cell);
       this.flash(el, el._cell, freq);
     }
     this._emitRecordingChange();
@@ -287,7 +382,7 @@ class Grid {
     this._getShapeCells(x, y).forEach(c => {
       const el = this._cellMap[`${c.x},${c.y}`];
       if (!el || !el._cell) return;
-      const freq = this.state.fundamental * (el._cell.n / el._cell.d);
+      const freq = this._freqFor(el._cell);
       this.audio.play(freq);
       this.flash(el, el._cell, freq);
     });
@@ -320,7 +415,7 @@ class Grid {
     this.onClick(cellEl, cellEl._cell);
   }
 
-  // 键盘发音：把物理键位映射到网格坐标并触发对应格子（长按持续发声）
+  // 键盘发音：把物理键位映射到网格坐标并触发对应格子（与点击一致，一次性发声）
   _onKeyDown(e) {
     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
@@ -353,36 +448,7 @@ class Grid {
 
     if (this.isRecording()) { this.recordAt(m.x, m.y); return; }
 
-    const freqs = [];
-    const els = [];
-    this._getShapeCells(m.x, m.y).forEach(c => {
-      const el = this._cellMap[`${c.x},${c.y}`];
-      if (!el || !el._cell) return;
-      const freq = this.state.fundamental * (el._cell.n / el._cell.d);
-      this.audio.noteOn(freq);
-      this.flashHold(el, el._cell, freq);
-      freqs.push(freq);
-      els.push(el);
-    });
-    if (freqs.length) this._held[e.code] = { freqs, els };
-  }
-
-  _onKeyUp(e) {
-    const h = this._held[e.code];
-    if (!h) return;
-    delete this._held[e.code];
-    h.freqs.forEach(f => this.audio.noteOff(f));
-    h.els.forEach(el => this.unflash(el));
-  }
-
-  // 窗口失焦时释放所有按住的键，避免卡音
-  _onBlur() {
-    for (const code in this._held) {
-      const h = this._held[code];
-      h.freqs.forEach(f => this.audio.noteOff(f));
-      h.els.forEach(el => this.unflash(el));
-    }
-    this._held = {};
+    this._playShape(m.x, m.y);
   }
 
   // 计算某个音符在当前「亮色依据」模式下的颜色（已应用饱和度）
@@ -439,16 +505,5 @@ class Grid {
     el.classList.add('playing');
     const t = setTimeout(() => el.classList.remove('playing'), 380);
     this._flashTimers.push(t);
-  }
-
-  // 键盘长按持续点亮（直到抬起）
-  flashHold(el, cell, freq) {
-    const color = this._colorFor(el, cell, freq);
-    el.style.setProperty('--flash', color);
-    el.classList.add('playing');
-  }
-
-  unflash(el) {
-    el.classList.remove('playing');
   }
 }

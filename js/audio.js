@@ -8,6 +8,7 @@ class AudioEngine {
     this.tone = null;
     this._started = false;
     this.release = 1.0;        // 延音（秒），可由设置栏滑块调整
+    this.minDuration = 0.9;    // 单次发声时长（秒），点击与键盘共用
     this.setTone('sine');
   }
 
@@ -96,7 +97,7 @@ class AudioEngine {
       const poly = this.sampler;
       // 官方 API：更新 PolySynth 的 envelope（影响后续新建的 voice）
       try { poly.set({ envelope: { release: seconds } }); } catch (e) { /* 忽略 */ }
-      // 兜底：直接更新所有 voice 的 envelope.release，确保长按（noteOn/noteOff）即时生效
+      // 兜底：直接更新所有 voice 的 envelope.release，确保当前已存在的 voice 即时生效
       const setVoice = v => { if (v && v.envelope) v.envelope.release = seconds; };
       try { setVoice(poly.voice); } catch (e) { /* 忽略 */ }
       try {
@@ -121,22 +122,9 @@ class AudioEngine {
     try { Tone.start(); } catch (e) { /* 忽略 */ }
   }
 
-  play(freq, dur = 0.9) {
+  play(freq, dur = this.minDuration) {
     if (!this.isReady()) return;
     this._ensureStarted();
     this.sampler.triggerAttackRelease(freq, dur, undefined, 0.9);
-  }
-
-  // 长按发音：按下 attack、抬起 release。
-  // 合成器（sine）会持续发声；采样器（钢琴等）按下即触发完整采样、抬起进入释放（延音）。
-  noteOn(freq) {
-    if (!this.isReady()) return;
-    this._ensureStarted();
-    this.sampler.triggerAttack(freq, undefined, 0.9);
-  }
-
-  noteOff(freq) {
-    if (!this.isReady()) return;
-    this.sampler.triggerRelease(freq);
   }
 }

@@ -87,6 +87,32 @@
       </section>
 
       <section>
+        <h3 data-i18n="settings.tuning">调音</h3>
+        <label class="row checkbox-row">
+          <input type="checkbox" id="tuningJust" checked>
+          <span data-i18n="settings.tuningJust">纯率</span>
+        </label>
+        <label class="row checkbox-row">
+          <input type="checkbox" id="tuningEqual">
+          <span data-i18n="settings.tuningEqual">平均律</span>
+        </label>
+        <label class="row">
+          <span data-i18n="settings.tuningType">等分方式</span>
+          <select id="tuningType">
+            <option value="edo" selected>EDO</option>
+            <option value="edt">EDT</option>
+            <option value="edp">EDP</option>
+            <option value="eds">EDS</option>
+            <option value="edu">EDU</option>
+          </select>
+        </label>
+        <label class="row">
+          <span data-i18n="settings.tuningDivision">等分数</span>
+          <input type="number" id="tuningDivision" value="12" min="1" max="1200" step="1" disabled>
+        </label>
+      </section>
+
+      <section>
         <h3 data-i18n="settings.dimensions">维度</h3>
         <p class="dim-note" data-i18n="settings.dimensionsNote">1D–5D 对应泛音 2、3、5、7、11（白 / 红 / 绿 / 紫 / 黄）</p>
         <div class="dim-group">
@@ -104,6 +130,10 @@
         <label class="row checkbox-row">
           <input type="checkbox" id="showDiff">
           <span data-i18n="settings.showDiff">显示音差</span>
+        </label>
+        <label class="row checkbox-row">
+          <input type="checkbox" id="showEdoSteps" disabled>
+          <span data-i18n="settings.showEdoSteps">显示平均律步数</span>
         </label>
         <label class="row">
           <span data-i18n="settings.threshold">阈值</span>
