@@ -143,9 +143,19 @@
             <span data-i18n="settings.cents">音分</span>
           </span>
         </label>
+        <label class="row">
+          <span data-i18n="settings.diffOpacity">透明度</span>
+          <input type="range" id="diffOpacityRange" min="0" max="100" step="1" value="100">
+          <output id="diffOpacityVal" style="min-width:40px;text-align:right;">100%</output>
+        </label>
         <div class="dim-group">
           <span class="dim-label" data-i18n="settings.dimension">维度</span>
           <div class="dim-options" id="diffDims"></div>
+        </div>
+        <div class="dim-group">
+          <span class="dim-label"></span>
+          <div class="dim-options" id="customDims"></div>
+          <button class="btn dim-add-btn" id="addCustomDim" data-i18n-title="settings.addCustomDim">＋</button>
         </div>
       </section>
 
@@ -233,6 +243,25 @@
         <p class="dim-note" id="shapeHint">选中形状后，点击 / 按键将演奏该形状内的音</p>
       </section>
 
+      <section>
+        <h3 data-i18n="settings.zone">音区</h3>
+        <label class="row">
+          <span data-i18n="settings.select">选中</span>
+          <select id="zoneSelect"><option value="">— 无 —</option></select>
+        </label>
+        <div class="shape-actions">
+          <button class="btn" id="recordZone" data-i18n="settings.zoneRecord">录制音区</button>
+          <button class="btn" id="saveZone" style="display:none" data-i18n="settings.zoneSave">保存音区</button>
+          <button class="btn" id="cancelZone" style="display:none" data-i18n="settings.cancel">取消</button>
+          <button class="btn" id="delZone" data-i18n="settings.zoneDelete">删除选中</button>
+        </div>
+        <label class="row checkbox-row">
+          <input type="checkbox" id="zoneOnlyPlay">
+          <span data-i18n="settings.zoneOnlyPlay">仅演奏</span>
+        </label>
+        <p class="dim-note" id="zoneHint" data-i18n="settings.zoneHint"></p>
+      </section>
+
     </div>
   </aside>
 
@@ -290,6 +319,27 @@
       </section>
     </div>
   </aside>
+
+  <!-- 添加自定义维度弹窗 -->
+  <div class="modal-backdrop" id="customDimModal" style="display:none">
+    <div class="modal">
+      <h3 data-i18n="settings.addCustomDim">添加自定义维度</h3>
+      <div class="modal-row">
+        <span data-i18n="settings.ratio">比例</span>
+        <input type="number" id="cdNum" min="1" step="1" placeholder="1">
+        <span class="modal-sep">/</span>
+        <input type="number" id="cdDen" min="1" step="1" placeholder="11">
+      </div>
+      <div class="modal-row">
+        <span>Hz</span>
+        <input type="number" id="cdFreq" min="0" step="any" placeholder="40">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cdCancel" data-i18n="common.cancel">取消</button>
+        <button class="btn" id="cdConfirm" data-i18n="common.confirm">确定</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/tone"></script>
   <script src="js/audio.js"></script>

@@ -20,6 +20,12 @@ function hexToRgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+// hex 颜色 -> rgba（附加透明度 alpha 0-1）
+function hexToRgba(hex, alpha) {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function toRgb(color) {
   if (typeof color !== 'string') return [255, 255, 255];
   if (color[0] === '#') return hexToRgb(color);
@@ -100,6 +106,41 @@ function wrapCents(c) {
   return c;
 }
 
+// 频率 -> 波长颜色（与「频率波长」亮色模式一致），返回 #rrggbb
+function freqToColor(freq) {
+  let wl = freq;
+  while (wl < 380) wl *= 2;
+  while (wl > 750) wl /= 2;
+  const [r, g, b] = wavelengthToRGB(wl);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// 最大公约数（用于分数约简）
+function gcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { const t = a % b; a = b; b = t; }
+  return a || 1;
+}
+
+// 浮点比率 -> 最接近的分数 n/d（d ≤ maxD），用连分数逼近
+function approxFraction(x, maxD = 1000) {
+  if (!(x > 0)) return { n: 0, d: 1 };
+  let n0 = 0, d0 = 1, n1 = 1, d1 = 0;
+  let xi = x;
+  for (let i = 0; i < 64; i++) {
+    const a = Math.floor(xi);
+    const n2 = a * n1 + n0;
+    const d2 = a * d1 + d0;
+    if (d2 > maxD) break;
+    n0 = n1; d0 = d1; n1 = n2; d1 = d2;
+    const frac = xi - a;
+    if (frac < 1e-12) break;
+    xi = 1 / frac;
+  }
+  const g = gcd(n1, d1);
+  return { n: n1 / g, d: d1 / g };
+}
+
 class Grid {
   constructor(container, audio, state) {
     this.container = container;
@@ -113,6 +154,7 @@ class Grid {
     this._lastCell = null;         // 拖拽过程中最近一次发音的格子元素
     this._cellMap = {};            // "x,y" -> 格子元素（键盘发音定位用）
     this._recording = null;        // 形状录制状态 { root, offsets }，非空即录制中
+    this._recordingZone = null;    // 音区录制状态 Set("x,y")，非空即录制中
 
     // 键盘 -> 网格坐标（物理键位）
     this._keyMap = {};
@@ -167,6 +209,15 @@ class Grid {
     board.style.gridTemplateRows = `repeat(${n}, ${cellPx}px)`;
     this.container.appendChild(board);
 
+    // 音区格子集合（用于白光轮廓 + 仅演奏判断）
+    const zoneSet = new Set();
+    if (this.isZoneRecording()) {
+      this._recordingZone.forEach(k => zoneSet.add(k));
+    } else {
+      const zone = this._activeZone();
+      if (zone) zone.cells.forEach(c => zoneSet.add(`${c.x},${c.y}`));
+    }
+
     for (let r = 0; r < n; r++) {
       const y = half - r;               // 上行为正（音高向上）
       for (let c = 0; c < n; c++) {
@@ -178,11 +229,21 @@ class Grid {
         el.dataset.x = x;
         el.dataset.y = y;
 
+        if (zoneSet.has(`${x},${y}`)) this._applyZoneEdges(el, x, y, zoneSet);
+
         const content = this._cellContent(cell, cellPx);
         if (content) {
           el.classList.add('diff');
-          if (content.bg) el.style.background = content.bg;
+          if (content.bg) {
+            const alpha = (this.state.diffOpacity ?? 100) / 100;
+            el.style.background = hexToRgba(content.bg, alpha);
+          }
           el.innerHTML = content.html;
+        }
+
+        // 「仅演奏」开启时，音区外的格子变灰变透明
+        if (this.state.zoneOnlyPlay && this._activeZone() && !zoneSet.has(`${x},${y}`)) {
+          el.classList.add('muted');
         }
 
         el._cell = cell;
@@ -194,13 +255,50 @@ class Grid {
     if (this.onRender) this.onRender();
   }
 
-  // 按当前阈值与选中维度，筛选该音符的匹配音差（按 |cents| 升序）
-  matchDims(cell) {
+  // 音区白光轮廓：相邻格子共享边不画，仅最外围画白光边框
+  _applyZoneEdges(el, x, y, zoneSet) {
+    const edge = '2px solid rgba(255, 255, 255, 0.9)';
+    const none = '1px solid transparent';
+    el.style.borderTop = zoneSet.has(`${x},${y + 1}`) ? none : edge;
+    el.style.borderBottom = zoneSet.has(`${x},${y - 1}`) ? none : edge;
+    el.style.borderLeft = zoneSet.has(`${x - 1},${y}`) ? none : edge;
+    el.style.borderRight = zoneSet.has(`${x + 1},${y}`) ? none : edge;
+  }
+
+  // 生成匹配的音差项（1D-5D 预计算 + 自定义维度动态），统一 { dim, color, n, d, cents, edoCents }
+  _allMatches(cell, edo) {
     const t = this.state.threshold;
-    const sel = this.state.showDims;
-    return cell.diffs
-      .filter(d => sel[d.dim] && Math.abs(d.cents) < t)
-      .sort((a, b) => Math.abs(a.cents) - Math.abs(b.cents));
+    const items = [];
+
+    // 1D-5D
+    cell.diffs.forEach(d => {
+      if (!this.state.showDims[d.dim] || Math.abs(d.cents) >= t) return;
+      const ed = edo ? edo.diffs.find(x => x.dim === d.dim) : null;
+      items.push({
+        dim: d.dim,
+        color: this.dims[d.dim - 1].diffColor,
+        n: d.n, d: d.d, cents: d.cents,
+        edoCents: ed ? ed.cents : null,
+      });
+    });
+
+    // 自定义维度
+    (this.state.customDims || []).forEach(cd => {
+      if (!cd.enabled) return;
+      const pureFreq = this.state.fundamental * (cell.n / cell.d);
+      const pureCents = wrapCents(1200 * Math.log2(pureFreq / cd.freq));
+      if (Math.abs(pureCents) >= t) return;
+      const { n, d } = approxFraction(Math.pow(2, pureCents / 1200));
+      let edoCents = null;
+      if (edo) {
+        const edoFreq = this.state.fundamental * Math.pow(2, edo.k / this.state.edoN);
+        edoCents = wrapCents(1200 * Math.log2(edoFreq / cd.freq));
+      }
+      items.push({ dim: cd.id, color: cd.color, n, d, cents: pureCents, edoCents });
+    });
+
+    items.sort((a, b) => Math.abs(a.cents) - Math.abs(b.cents));
+    return items;
   }
 
   // 音差模式：为每个匹配维度渲染一行「逗号比 + 音分」（纯率音比目标音低时音分带负号）
@@ -208,9 +306,8 @@ class Grid {
     const fsR = Math.max(8, Math.floor(cellPx / 4.2));
     const fsC = Math.max(7, Math.floor(cellPx / 6));
     const rows = matches.map(m => {
-      const color = this.dims[m.dim - 1].diffColor;
       const cents = Math.round(m.cents);
-      return `<div class="near-row" style="border-left:3px solid ${color}">
+      return `<div class="near-row" style="border-left:3px solid ${m.color}">
         <span class="chip-ratio" style="font-size:${fsR}px">${m.n}/${m.d}</span>
         <span class="chip-cents" style="font-size:${fsC}px">${cents}¢</span>
       </div>`;
@@ -225,9 +322,9 @@ class Grid {
     if (!isEqual) {
       // 纯率：沿用原有音差显示（音分带符号）
       if (!this.state.showDiff) return null;
-      const matches = this.matchDims(cell);
+      const matches = this._allMatches(cell, null);
       if (matches.length === 0) return { html: '', bg: null };
-      return { html: this.nearChip(matches, cellPx), bg: this.dims[matches[0].dim - 1].diffColor };
+      return { html: this.nearChip(matches, cellPx), bg: matches[0].color };
     }
 
     // 平均律
@@ -240,10 +337,10 @@ class Grid {
     }
 
     if (this.state.showDiff) {
-      const matches = this.matchDims(cell);   // 有颜色：纯率格匹配泛音维度
+      const matches = this._allMatches(cell, edo);   // 有颜色：纯率格匹配泛音维度（含自定义）
       if (matches.length > 0) {
-        bg = this.dims[matches[0].dim - 1].diffColor;
-        parts.push(this._chainChips(matches, edo, cellPx));
+        bg = matches[0].color;
+        parts.push(this._chainChips(matches, cellPx));
       } else {
         // 无颜色：仅显示 EDO 音 vs 纯率格的音差
         parts.push(this._justCentsChip(edo, cellPx));
@@ -287,15 +384,13 @@ class Grid {
   }
 
   // 有颜色格子：纯率逗号比（不变）+「纯率音分 → EDO 音到目标音的音差」（同一行）
-  _chainChips(matches, edo, cellPx) {
+  _chainChips(matches, cellPx) {
     const fsR = Math.max(8, Math.floor(cellPx / 4.2));
     const fsC = Math.max(7, Math.floor(cellPx / 6));
     return matches.map(m => {
-      const color = this.dims[m.dim - 1].diffColor;
       const pureCents = Math.round(m.cents);          // 纯率格到目标音的音差
-      const ed = edo.diffs.find(d => d.dim === m.dim);
-      const edoCents = Math.round(ed ? ed.cents : 0); // EDO 音到目标音的音差
-      return `<div class="near-row" style="border-left:3px solid ${color}">
+      const edoCents = Math.round(m.edoCents);        // EDO 音到目标音的音差
+      return `<div class="near-row" style="border-left:3px solid ${m.color}">
         <span class="chip-ratio" style="font-size:${fsR}px">${m.n}/${m.d}</span>
         <span class="chip-cents" style="font-size:${fsC}px">${pureCents}¢ → ${edoCents}¢</span>
       </div>`;
@@ -315,6 +410,7 @@ class Grid {
     const x = parseInt(el.dataset.x, 10);
     const y = parseInt(el.dataset.y, 10);
     if (this.isRecording()) { this.recordAt(x, y); return; }
+    if (this.isZoneRecording()) { this.toggleZoneAt(x, y); return; }
     this._playShape(x, y);
   }
 
@@ -357,6 +453,48 @@ class Grid {
     if (this.onRecordingChange) this.onRecordingChange(this._recording);
   }
 
+  // —— 音区 ——
+  isZoneRecording() { return !!this._recordingZone; }
+
+  _activeZone() {
+    const id = this.state.activeZoneId;
+    if (!id) return null;
+    return this.state.zones.find(z => z.id === id) || null;
+  }
+
+  startZoneRecording() {
+    this._recordingZone = new Set();
+    this.render();
+  }
+
+  cancelZoneRecording() {
+    this._recordingZone = null;
+    this.render();
+  }
+
+  getZoneRecording() {
+    if (!this._recordingZone) return null;
+    return Array.from(this._recordingZone).map(s => {
+      const [x, y] = s.split(',').map(Number);
+      return { x, y };
+    });
+  }
+
+  // 录制音区：点击格子 toggle 加入/移出
+  toggleZoneAt(x, y) {
+    if (!this._recordingZone) return;
+    const key = `${x},${y}`;
+    if (this._recordingZone.has(key)) this._recordingZone.delete(key);
+    else this._recordingZone.add(key);
+    this.render();
+  }
+
+  _inZone(x, y) {
+    const zone = this._activeZone();
+    if (!zone) return false;
+    return zone.cells.some(c => c.x === x && c.y === y);
+  }
+
   _getActiveShape() {
     const id = this.state.activeShapeId;
     if (!id) return null;
@@ -380,6 +518,7 @@ class Grid {
   // 点击 / 拖拽演奏形状（一次性 attack+release）
   _playShape(x, y) {
     this._getShapeCells(x, y).forEach(c => {
+      if (this.state.zoneOnlyPlay && this._activeZone() && !this._inZone(c.x, c.y)) return;
       const el = this._cellMap[`${c.x},${c.y}`];
       if (!el || !el._cell) return;
       const freq = this._freqFor(el._cell);
@@ -447,6 +586,7 @@ class Grid {
     if (e.repeat) return;  // 已按下，不重复触发
 
     if (this.isRecording()) { this.recordAt(m.x, m.y); return; }
+    if (this.isZoneRecording()) { this.toggleZoneAt(m.x, m.y); return; }
 
     this._playShape(m.x, m.y);
   }

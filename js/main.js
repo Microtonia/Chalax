@@ -6,7 +6,9 @@
     size: 9,           // 网格大小（奇数，3..17）
     showDiff: false,   // 是否显示音差
     threshold: 50,     // 音差显示阈值（0–100 音分）
+    diffOpacity: 100,  // 音差背景透明度（0–100）
     showDims: {1: true, 2: true, 3: true, 4: true, 5: true},  // 显示哪些维度的音差
+    customDims: [],   // 自定义维度 [{ id, freq, color, enabled }]（localStorage 加载）
     tuning: 'just',    // 调音方式：'just' 纯率（默认）/ 'equal' 平均律
     edoType: 'edo',    // 等分方式（当前仅实现 edo）
     edoN: 12,          // 平均律等分数（仅平均律下生效）
@@ -16,6 +18,9 @@
     shapes: [],        // 自定义形状 [{ id, name, offsets:[{dx,dy}], shortcut }]（localStorage 加载）
     activeShapeId: null, // 当前选中的形状 id（null = 单音）
     singleShortcut: null, // 单音模式的快捷键（Shift+数字行，存 localStorage）
+    zones: [],        // 音区 [{ id, name, cells: [{x,y},...] }]（localStorage 加载）
+    activeZoneId: null, // 当前选中的音区 id（null = 无）
+    zoneOnlyPlay: false, // 仅演奏选中音区内的音
     fundamental: 440,  //根音频率 ——A
     bgColor: '#5c5470',
     bgOpacity: 1.0,

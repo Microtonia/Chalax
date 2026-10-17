@@ -116,6 +116,7 @@ html, body {
 }
 .cell.diff { background: rgba(18, 16, 24, 0.62); }
 .cell.diff:hover { background: rgba(18, 16, 24, 0.82); }
+.cell.muted { opacity: 0.35; filter: grayscale(0.85); }
 
 /* 音差模式：格子内容（每个匹配维度一行，左侧色条=该维度色，白色文字） */
 .near {
@@ -334,6 +335,36 @@ select option { background: #241f2e; color: #fff; }
 }
 .dim-group .btn { width: auto; flex: 0 0 auto; padding: 5px 12px; }
 
+/* 自定义维度：删除按钮 + 添加按钮 */
+.dim-add-btn { padding: 2px 9px; font-size: 14px; line-height: 1.2; border-radius: 14px; }
+.dim-option .dim-del {
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dim-option .dim-del:hover { background: rgba(255, 92, 92, 0.55); }
+
+/* 自定义维度取色：透明色块覆盖在 swatch 上 */
+.dim-option .custom-swatch { position: relative; overflow: hidden; }
+.dim-option input.dim-color-input {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
 /* 下边框右侧按钮组 */
 .bar-actions { display: flex; gap: 8px; }
 
@@ -368,3 +399,45 @@ select option { background: #241f2e; color: #fff; }
   color: var(--text-dim);
   line-height: 1.7;
 }
+
+/* 自定义维度弹窗 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.modal {
+  width: 280px;
+  max-width: 90vw;
+  background: #2a2436;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.modal h3 { margin: 0 0 14px; font-size: 15px; color: #fff; }
+.modal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.modal-row input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.modal-sep { color: var(--text-dim); }
+.modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+.modal-actions .btn { flex: 1; }

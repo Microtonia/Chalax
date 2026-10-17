@@ -12,6 +12,8 @@ class Settings {
     this.panel = document.getElementById('settingsPanel');
     this.shapesKey = 'chalax_shapes';
     this.singleShortcutKey = 'chalax_single_shortcut';
+    this.customDimsKey = 'chalax_custom_dims';
+    this.zonesKey = 'chalax_zones';
     this.langKey = 'chalax_lang';
     this._recording = null;
     this._waitingShortcutFor = null;
@@ -162,6 +164,32 @@ class Settings {
       this.grid.render();
     });
 
+    // 自定义维度
+    document.getElementById('addCustomDim').addEventListener('click', () => this.addCustomDim());
+    document.getElementById('cdConfirm').addEventListener('click', () => this._confirmCustomDim());
+    document.getElementById('cdCancel').addEventListener('click', () => this._cancelCustomDim());
+
+    // 比例 / Hz 双向联动
+    const cdNum = document.getElementById('cdNum');
+    const cdDen = document.getElementById('cdDen');
+    const cdFreq = document.getElementById('cdFreq');
+    const updateFreqFromRatio = () => {
+      const n = parseFloat(cdNum.value);
+      const d = parseFloat(cdDen.value);
+      if (n > 0 && d > 0) cdFreq.value = Math.round(this.state.fundamental * n / d * 100) / 100;
+    };
+    const updateRatioFromFreq = () => {
+      const f = parseFloat(cdFreq.value);
+      if (f > 0) {
+        const { n, d } = approxFraction(f / this.state.fundamental);
+        cdNum.value = n;
+        cdDen.value = d;
+      }
+    };
+    cdNum.addEventListener('input', updateFreqFromRatio);
+    cdDen.addEventListener('input', updateFreqFromRatio);
+    cdFreq.addEventListener('input', updateRatioFromFreq);
+
     // 方块亮度依据（三种模式互斥）
     const flashModes = [
       { id: 'flashDiff', mode: 'diff' },
@@ -190,6 +218,13 @@ class Settings {
     // 音差开关
     document.getElementById('showDiff').addEventListener('change', e => {
       this.state.showDiff = e.target.checked;
+      this.grid.render();
+    });
+
+    // 音差背景透明度
+    document.getElementById('diffOpacityRange').addEventListener('input', e => {
+      this.state.diffOpacity = parseInt(e.target.value, 10);
+      document.getElementById('diffOpacityVal').textContent = e.target.value + '%';
       this.grid.render();
     });
 
@@ -232,6 +267,20 @@ class Settings {
     document.getElementById('setShortcut').addEventListener('click', () => this.startShortcutWaiting());
     document.getElementById('clearShortcut').addEventListener('click', () => this.clearShortcut());
 
+    // 音区
+    document.getElementById('recordZone').addEventListener('click', () => this.onRecordZone());
+    document.getElementById('saveZone').addEventListener('click', () => this.onSaveZone());
+    document.getElementById('cancelZone').addEventListener('click', () => this.onCancelZone());
+    document.getElementById('delZone').addEventListener('click', () => this.deleteZone());
+    document.getElementById('zoneOnlyPlay').addEventListener('change', e => {
+      this.state.zoneOnlyPlay = e.target.checked;
+    });
+    document.getElementById('zoneSelect').addEventListener('change', e => {
+      this.state.activeZoneId = e.target.value || null;
+      this._updateZoneUI();
+      this.grid.render();
+    });
+
     // 快捷键监听（capture 阶段，优先于网格发音）
     window.addEventListener('keydown', e => this._onShortcutKeydown(e), { capture: true });
 
@@ -255,9 +304,12 @@ class Settings {
 
     this.loadShapes();
     this.loadSingleShortcut();
+    this.loadCustomDims();
+    this.loadZones();
     this.loadPics();
     this._updateShapeHint();
     this._updateShortcutDisplay();
+    this._updateZoneUI();
     this._updateSoundCredit();
   }
 
@@ -266,8 +318,10 @@ class Settings {
     await I18n.setLocale(lang);
     this.grid.render();          // 更新图例
     this.renderShapes();          // 更新形状下拉文本
+    this.renderZones();           // 更新音区下拉文本
     this._updateShapeHint();      // 更新形状提示
     this._updateShortcutDisplay();
+    this._updateZoneUI();
     document.getElementById('langSelect').value = lang;
     document.getElementById('helpLangSelect').value = lang;
   }
@@ -363,6 +417,118 @@ class Settings {
         this.grid.render();
       });
     });
+  }
+
+  // —— 自定义维度 ——
+  loadCustomDims() {
+    try {
+      this.state.customDims = JSON.parse(localStorage.getItem(this.customDimsKey) || '[]');
+    } catch (e) {
+      this.state.customDims = [];
+    }
+    this.renderCustomDims();
+  }
+
+  saveCustomDims() {
+    try { localStorage.setItem(this.customDimsKey, JSON.stringify(this.state.customDims)); } catch (e) { /* 忽略 */ }
+  }
+
+  renderCustomDims() {
+    const box = document.getElementById('customDims');
+    box.innerHTML = '';
+    (this.state.customDims || []).forEach(cd => {
+      const label = document.createElement('label');
+      label.className = 'dim-option custom-dim';
+
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = cd.enabled !== false;
+
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch custom-swatch';
+      swatch.style.background = cd.color;
+
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.value = cd.color;
+      colorInput.className = 'dim-color-input';
+      colorInput.addEventListener('click', e => e.stopPropagation());
+      colorInput.addEventListener('input', () => {
+        cd.color = colorInput.value;
+        swatch.style.background = cd.color;
+        this.saveCustomDims();
+        this.grid.render();
+      });
+      swatch.appendChild(colorInput);   // 透明覆盖在色块上，点击即打开取色器
+
+      const text = document.createElement('span');
+      text.textContent = (cd.n && cd.d) ? `${cd.n}/${cd.d}` : `${cd.freq}Hz`;
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'dim-del';
+      del.textContent = '×';
+      del.title = I18n.t('settings.deleteCustomDim');
+      del.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.deleteCustomDim(cd.id);
+      });
+
+      label.appendChild(input);
+      label.appendChild(swatch);
+      label.appendChild(text);
+      label.appendChild(del);
+      box.appendChild(label);
+
+      input.addEventListener('change', () => {
+        cd.enabled = input.checked;
+        this.saveCustomDims();
+        this.grid.render();
+      });
+    });
+  }
+
+  addCustomDim() {
+    const modal = document.getElementById('customDimModal');
+    document.getElementById('cdNum').value = '';
+    document.getElementById('cdDen').value = '';
+    document.getElementById('cdFreq').value = '';
+    modal.style.display = 'flex';
+    document.getElementById('cdNum').focus();
+  }
+
+  _confirmCustomDim() {
+    const f = parseFloat(document.getElementById('cdFreq').value);
+    const n = parseFloat(document.getElementById('cdNum').value);
+    const d = parseFloat(document.getElementById('cdDen').value);
+    let freq = f;
+    if ((isNaN(freq) || freq <= 0) && n > 0 && d > 0) freq = this.state.fundamental * n / d;
+    if (isNaN(freq) || freq <= 0) return;
+    const ratio = approxFraction(freq / this.state.fundamental);
+    this.state.customDims.push({
+      id: 'c' + Date.now(),
+      freq,
+      n: ratio.n,
+      d: ratio.d,
+      color: freqToColor(freq),
+      enabled: true,
+    });
+    this.saveCustomDims();
+    this.renderCustomDims();
+    this.grid.render();
+    document.getElementById('customDimModal').style.display = 'none';
+  }
+
+  _cancelCustomDim() {
+    document.getElementById('customDimModal').style.display = 'none';
+  }
+
+  deleteCustomDim(id) {
+    this.state.customDims = this.state.customDims.filter(cd => cd.id !== id);
+    this.saveCustomDims();
+    this.renderCustomDims();
+    this.grid.render();
   }
 
   async loadPics() {
@@ -490,6 +656,87 @@ class Settings {
     this.saveShapes();
     this.renderShapes();
     this._updateShortcutDisplay();
+  }
+
+  // —— 音区 ——
+  loadZones() {
+    try {
+      this.state.zones = JSON.parse(localStorage.getItem(this.zonesKey) || '[]');
+    } catch (e) {
+      this.state.zones = [];
+    }
+    this.state.activeZoneId = null;
+    this.renderZones();
+  }
+
+  saveZones() {
+    try { localStorage.setItem(this.zonesKey, JSON.stringify(this.state.zones)); } catch (e) { /* 忽略 */ }
+  }
+
+  renderZones() {
+    const sel = document.getElementById('zoneSelect');
+    sel.innerHTML = `<option value="">${I18n.t('settings.zoneNone')}</option>`;
+    this.state.zones.forEach(z => {
+      const opt = document.createElement('option');
+      opt.value = z.id;
+      opt.textContent = z.name + I18n.t('settings.zoneNotesCount', { n: z.cells.length });
+      sel.appendChild(opt);
+    });
+    sel.value = this.state.activeZoneId || '';
+  }
+
+  onRecordZone() {
+    this.grid.startZoneRecording();
+    this._updateZoneUI();
+  }
+
+  onSaveZone() {
+    const cells = this.grid.getZoneRecording();
+    if (!cells || cells.length === 0) return;
+    const defaultName = I18n.t('settings.zoneDefaultName', { n: this.state.zones.length + 1 });
+    const name = prompt(I18n.t('settings.zoneNamePrompt'), defaultName);
+    if (name == null) return;   // 用户取消
+    const nm = name.trim() || defaultName;
+    const zone = { id: String(Date.now()), name: nm, cells };
+    this.state.zones.push(zone);
+    this.state.activeZoneId = zone.id;
+    this.saveZones();
+    this.grid.cancelZoneRecording();
+    this.renderZones();
+    this._updateZoneUI();
+    this.grid.render();
+  }
+
+  onCancelZone() {
+    this.grid.cancelZoneRecording();
+    this._updateZoneUI();
+  }
+
+  deleteZone() {
+    const id = this.state.activeZoneId;
+    if (!id) return;
+    this.state.zones = this.state.zones.filter(z => z.id !== id);
+    this.state.activeZoneId = null;
+    this.state.zoneOnlyPlay = false;
+    document.getElementById('zoneOnlyPlay').checked = false;
+    this.saveZones();
+    this.renderZones();
+    this._updateZoneUI();
+    this.grid.render();
+  }
+
+  _updateZoneUI() {
+    const rec = this.grid.isZoneRecording();
+    const zone = this.state.zones.find(z => z.id === this.state.activeZoneId);
+    document.getElementById('recordZone').style.display = rec ? 'none' : '';
+    document.getElementById('saveZone').style.display = rec ? '' : 'none';
+    document.getElementById('cancelZone').style.display = rec ? '' : 'none';
+    document.getElementById('delZone').style.display = rec ? 'none' : '';
+    document.getElementById('zoneOnlyPlay').disabled = rec || !zone;
+    const hint = document.getElementById('zoneHint');
+    if (rec) hint.textContent = I18n.t('settings.zoneRecordingHint');
+    else if (zone) hint.textContent = I18n.t('settings.zoneHasHint', { n: zone.cells.length });
+    else hint.textContent = I18n.t('settings.zoneHint');
   }
 
   onRecordingChange(rec) {
